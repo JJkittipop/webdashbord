@@ -1,28 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
+// ลบ import ของ leaflet ออกเพราะเราเปลี่ยนไปใช้ Google Maps Iframe แล้ว
 import { ref, onValue, set } from "firebase/database";
 import { db } from "./main";
-
-/* FIX LEAFLET ICON */
-import L from "leaflet";
-import icon from "leaflet/dist/images/marker-icon.png";
-import iconShadow from "leaflet/dist/images/marker-shadow.png";
-
-const DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-L.Marker.prototype.options.icon = DefaultIcon;
-
-/* MAP AUTO CENTER */
-function ChangeView({ center }) {
-  const map = useMap();
-  map.setView(center, map.getZoom());
-  return null;
-}
 
 export default function DashboardPage() {
   const [systemData, setSystemData] = useState({
@@ -33,11 +12,12 @@ export default function DashboardPage() {
     speed: 0,
   });
 
-  const [position, setPosition] = useState([13.7563, 100.5018]);
+  const [position, setPosition] = useState([13.7563, 100.5018]); // [lat, lng]
   const [hasGPS, setHasGPS] = useState(false);
   const [findMeStatus, setFindMeStatus] = useState(false);
 
   useEffect(() => {
+    // 1. ดึงข้อมูลสถานะ (Status)
     const statusRef = ref(db, "SmartBag/Status");
     const unsubStatus = onValue(statusRef, (snap) => {
       const data = snap.val();
@@ -61,6 +41,7 @@ export default function DashboardPage() {
       }
     });
 
+    // 2. ดึงข้อมูลปุ่ม Find Me
     const cmdRef = ref(db, "SmartBag/Commands/findMe");
     const unsubCmd = onValue(cmdRef, (snap) => {
       setFindMeStatus(snap.val() === true);
@@ -86,8 +67,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="status-container">
-          <div className="status is-error">ออนไลน์ (มีข้อผิดพลาด)</div>
-          <span className="status-detail">Invalid Data</span>
+          <div className={`status ${hasGPS ? "is-success" : "is-error"}`} style={{backgroundColor: hasGPS ? '#d1fae5' : '#fee2e2', color: hasGPS ? '#065f46' : '#991b1b', border: hasGPS ? '1px solid #10b981' : '1px solid #ef4444'}}>
+             {hasGPS ? "ออนไลน์ (ปกติ)" : "รอสัญญาณ GPS"}
+          </div>
+          <span className="status-detail">
+             {hasGPS ? "Data Received" : "Waiting for fix..."}
+          </span>
         </div>
       </div>
 
@@ -95,7 +80,7 @@ export default function DashboardPage() {
       <div className="dashboard">
         {/* LEFT – STATUS */}
         <div className="card main-status-card">
-          <div className="card-title">สรุปสถานะโดยรวม</div>
+          <div className="card-title">⚙️ สรุปสถานะโดยรวม</div>
 
           <div className="main-stats-row">
             <div>
@@ -103,8 +88,8 @@ export default function DashboardPage() {
               <div className="sub-detail-row">แบตเตอรี่คงเหลือ</div>
             </div>
 
-            <div className="safety-status-value">
-              ปลอดภัย ✓
+            <div className="safety-status-value" style={{ color: systemData.isSafe ? 'var(--success)' : 'var(--danger)' }}>
+              {systemData.isSafe ? "ปลอดภัย ✓" : "แจ้งเตือน ⚠️"}
             </div>
           </div>
 
@@ -125,10 +110,11 @@ export default function DashboardPage() {
 
         {/* LEFT – FIND ME */}
         <div className="card">
-          <div className="card-title">Find Me</div>
+          <div className="card-title">🔊 Find Me (ค้นหากระเป๋า)</div>
           {findMeStatus ? (
             <button
               className="btn"
+              style={{ backgroundColor: "#ef4444" }}
               onClick={() => toggleFindMe(false)}
             >
               หยุดส่งเสียง
@@ -143,55 +129,66 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* LEFT – HISTORY */}
+        {/* LEFT – HISTORY (ย่อ) */}
         <div className="card history-card">
           <div className="history-header">
-            <h3>ประวัติการทำงาน</h3>
+            <h3>📜 ประวัติการทำงานล่าสุด</h3>
           </div>
 
           <div className="history-list">
             <div className="history-item">
               <div>
-                <div className="history-title">เชื่อมต่อ GPS สำเร็จ</div>
-                <div className="history-time">10:24</div>
+                <div className="history-title">อัปเดตล่าสุด</div>
+                <div className="history-time">{systemData.last_update}</div>
               </div>
-              <span className="history-status success">ปกติ</span>
-            </div>
-
-            <div className="history-item">
-              <div>
-                <div className="history-title">สัญญาณขาดหาย</div>
-                <div className="history-time">09:58</div>
-              </div>
-              <span className="history-status warning">เตือน</span>
+              <span className="history-status success">Active</span>
             </div>
           </div>
         </div>
 
-        {/* RIGHT – MAP */}
-        <div className="card map-card">
-          <div className="card-title map-title">
-            <span>📍 ตำแหน่งปัจจุบัน</span>
-            <span className="gps-text">
-              {hasGPS
-                ? `${position[0].toFixed(5)}, ${position[1].toFixed(5)}`
-                : "รอ GPS"}
-            </span>
+        {/* RIGHT – MAP (เปลี่ยนเป็น Google Maps Iframe) */}
+        <div className="card map-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* Header ของ Map */}
+          <div style={{ padding: '15px 20px', borderBottom: '1px solid var(--border)', background: '#fff', zIndex: 10 }}>
+            <div className="card-title map-title" style={{ marginBottom: 0, justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>📍 ตำแหน่งปัจจุบัน</span>
+              <span className="gps-text" style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>
+                {hasGPS
+                  ? `${position[0].toFixed(5)}, ${position[1].toFixed(5)}`
+                  : "กำลังค้นหาพิกัด..."}
+              </span>
+            </div>
           </div>
 
-          <div className="map-box">
-            <MapContainer center={position} zoom={15}>
-              <ChangeView center={position} />
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {hasGPS && (
-                <Marker position={position}>
-                  <Popup>
-                    Smart Bag <br />
-                    อัปเดต: {systemData.last_update}
-                  </Popup>
-                </Marker>
-              )}
-            </MapContainer>
+          {/* Map Area */}
+          <div className="map-box" style={{ flex: 1, minHeight: '400px', backgroundColor: '#e5e7eb', position: 'relative' }}>
+            {hasGPS ? (
+              <iframe
+                title="Realtime Map"
+                width="100%"
+                height="100%"
+                style={{ border: 0 }}
+                loading="lazy"
+                allowFullScreen
+                referrerPolicy="no-referrer-when-downgrade"
+                // ลิงก์ Embed Google Maps (ใช้ Lat/Lng จาก State)
+                src={`https://maps.google.com/maps?q=${position[0]},${position[1]}&z=15&output=embed`}
+              ></iframe>
+            ) : (
+              // หน้าจอรอกรณีไม่มีสัญญาณ GPS
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                height: '100%', 
+                color: '#6b7280' 
+              }}>
+                <span style={{ fontSize: '3rem', marginBottom: '10px' }}>📡</span>
+                <p>รอสัญญาณ GPS จากอุปกรณ์...</p>
+                <small>กรุณานำอุปกรณ์ออกไปที่โล่งแจ้ง</small>
+              </div>
+            )}
           </div>
         </div>
       </div>

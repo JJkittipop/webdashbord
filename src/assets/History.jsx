@@ -1,4 +1,4 @@
-// src/assets/History.jsx (FINAL VERSION)
+// src/assets/History.jsx (Updated with Export Feature)
 import React, { useState, useEffect } from 'react';
 import { getDatabase, ref, onValue, query, limitToLast } from "firebase/database";
 import { db } from '../main'; 
@@ -11,27 +11,22 @@ function HistoryPage() {
         const historyRef = ref(db, 'SmartBag/History');
         const historyQuery = query(historyRef, limitToLast(100)); 
 
-        // onValue เป็น Real-time Listener (จะดึงข้อมูลอัตโนมัติเมื่อมีการ push ข้อมูลใหม่เข้ามา)
         const unsubscribe = onValue(historyQuery, (snapshot) => {
             const data = snapshot.val();
             const fetchedLogs = [];
             
             if (data) {
-                // ใช้ Object.entries เพื่อเข้าถึงทั้ง key (ID) และ value (Log Data)
                 Object.entries(data).forEach(([key, logData]) => {
-                    // ตรวจสอบว่ามี Lat/Lng ก่อนเพิ่มลงใน Log (ตามเงื่อนไขของโค้ด ESP32)
                     if (logData.lat && logData.lng) {
                         fetchedLogs.push({
                             key: key,
                             ...logData,
-                            // ใช้ timestamp ที่ ESP32 ส่งมาโดยตรง (เป็น String เช่น "14:50:30")
                             timestampDisplay: logData.timestamp || 'N/A'
                         });
                     }
                 });
             }
             
-            // เรียงลำดับจากใหม่ไปเก่า
             fetchedLogs.reverse(); 
             setLogs(fetchedLogs);
             setLoading(false);
@@ -40,29 +35,75 @@ function HistoryPage() {
             setLoading(false);
         });
         
-        // Cleanup function สำหรับยกเลิกการฟัง Real-time เมื่อ component ถูกทำลาย
         return () => unsubscribe(); 
     }, []);
+
+    // --- ฟังก์ชันสำหรับดาวน์โหลดไฟล์ CSV (เพิ่มใหม่ตรงนี้) ---
+    const downloadCSV = () => {
+        // 1. สร้างหัวตาราง
+        const csvRows = [];
+        const headers = ["Timestamp", "Latitude", "Longitude", "Speed (km/h)", "Status", "Google Maps Link"];
+        csvRows.push(headers.join(","));
+
+        // 2. วนลูปเอาข้อมูลมาใส่ทีละแถว
+        logs.forEach(log => {
+            const row = [
+                `"${log.timestampDisplay}"`, // ใส่ฟันหนูกัน Format เพี้ยน
+                log.lat,
+                log.lng,
+                log.speed,
+                log.isSafe ? "Safe" : "Alert",
+                `http://googleusercontent.com/maps.google.com/search?api=1&query=${log.lat},${log.lng}`
+            ];
+            csvRows.push(row.join(","));
+        });
+
+        // 3. สร้างไฟล์และสั่งดาวน์โหลด
+        const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SmartBag_Log_${new Date().toISOString().slice(0,10)}.csv`; // ตั้งชื่อไฟล์ตามวันที่
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
 
     if (loading) {
         return <div className="page-content" style={{textAlign:'center', marginTop:'50px'}}>กำลังโหลดประวัติ...</div>;
     }
 
-
     return (
         <div className="page-content">
             
-            <div className="header-section">
+            <div className="header-section" style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'20px'}}>
                 <div>
                     <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
                     <p style={{color:'var(--muted)', fontSize:'1rem'}}>แสดงข้อมูลพิกัดล่าสุด 100 รายการที่ถูกบันทึกไว้</p>
                 </div>
-                <div className={`status-pill online`}>
-                    <span>✅ ข้อมูลเรียลไทม์จาก Firebase</span>
+                
+                <div style={{display:'flex', gap:'10px'}}>
+                    {/* ปุ่มดาวน์โหลดไฟล์ (เพิ่มใหม่) */}
+                    <button 
+                        onClick={downloadCSV}
+                        className="btn"
+                        style={{
+                            backgroundColor:'#10b981', // สีเขียว
+                            width:'auto', 
+                            padding:'10px 20px',
+                            display:'flex',
+                            alignItems:'center',
+                            gap:'8px'
+                        }}
+                    >
+                        📥 บันทึกเป็น Excel
+                    </button>
+
+                    <div className={`status-pill online`}>
+                        <span>✅ Realtime</span>
+                    </div>
                 </div>
             </div>
 
-            {/* Table Container - จัดให้อยู่ใน Card */}
             <div className="card" style={{padding:'0', overflowX:'auto', minHeight:'400px'}}>
                 <table className="history-table">
                     <thead>
@@ -78,12 +119,10 @@ function HistoryPage() {
                     <tbody>
                         {logs.length > 0 ? logs.map((log) => (
                             <tr key={log.key}>
-                                {/* ใช้ timestampDisplay ที่ดึงมาโดยตรง */}
                                 <td style={{color:'var(--text)', fontWeight:'600'}}>{log.timestampDisplay || 'N/A'}</td>
                                 <td>{log.lat?.toFixed(6) || '--'}</td>
                                 <td>{log.lng?.toFixed(6) || '--'}</td>
                                 <td>
-                                    {/* แสดงความเร็วพร้อมหน่วย */}
                                     <span style={{fontWeight:'bold'}}>{(log.speed || 0).toFixed(1)} km/h</span>
                                 </td>
                                 <td style={{color: log.isSafe ? 'var(--success)' : 'var(--danger)', fontWeight:'600'}}>
@@ -92,13 +131,13 @@ function HistoryPage() {
                                 <td>
                                     {log.lat && log.lng ? (
                                         <a 
-    href={`https://www.google.com/maps/search/?api=1&query=${log.lat},${log.lng}`} 
-    target="_blank" 
-    rel="noopener noreferrer" 
-    style={{color:'var(--primary)', textDecoration:'none', fontWeight:'600'}}
->
-    🗺️ เปิดพิกัดบน Google Maps
-</a>
+                                            href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${log.lat},${log.lng}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            style={{color:'var(--primary)', textDecoration:'none', fontWeight:'600'}}
+                                        >
+                                            🗺️ เปิดพิกัดบน Google Maps
+                                        </a>
                                     ) : (
                                         <span style={{color:'var(--muted)'}}>พิกัดไม่สมบูรณ์</span>
                                     )}
@@ -107,7 +146,7 @@ function HistoryPage() {
                         )) : (
                             <tr>
                                 <td colSpan="6" style={{textAlign:'center', padding:'40px', color:'var(--muted)'}}>
-                                    ยังไม่มีประวัติการบันทึก (รอข้อมูลจาก ESP32 หรือ Path ผิดพลาด)
+                                    ยังไม่มีประวัติการบันทึก
                                 </td>
                             </tr>
                         )}
