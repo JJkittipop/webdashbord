@@ -2,132 +2,129 @@ import express from 'express';
 import mysql from 'mysql2';
 import cors from 'cors';
 import mqtt from 'mqtt';
+import path from 'path';                // 👈 (เพิ่ม) เพื่อจัดการที่อยู่ไฟล์
+import { fileURLToPath } from 'url';    // 👈 (เพิ่ม) เพื่อใช้ใน Node.js รุ่นใหม่
+
+/* =========================
+   SETUP (ส่วนที่เพิ่มใหม่)
+========================= */
+// สร้างตัวแปร __dirname ให้ใช้งานได้
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ✅ 1. ตั้งค่าให้ Server รู้จักโฟลเดอร์หน้าเว็บ (dist)
+// (บรรทัดนี้สำคัญมาก! ถ้าไม่มีบรรทัดนี้ เว็บจะเปิดไม่ติด)
+app.use(express.static(path.join(__dirname, 'dist')));
 
 /* =========================
    CONFIG
 ========================= */
-const TEST_MODE = true; // 🔧 true = ใช้พิกัดจำลอง | false = ใช้ GPS จริง
+const TEST_MODE = false;
 
 /* =========================
-   MySQL CONFIG (POOL)
+   MySQL CONFIG (ALWAYS DATA) ☁️
 ========================= */
 const db = mysql.createPool({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'smartbag_db',
+  host: 'mysql-smartbag-tracking.alwaysdata.net',
+  user: 'smartbag-tracking',
+  password: 'bigolive0973541561',  // 🔑 รหัสผ่านเดิมของคุณ
+  database: 'smartbag-tracking_db',
   waitForConnections: true,
   connectionLimit: 10
 });
 
-console.log('✅ MySQL Pool Created');
+console.log('✅ MySQL Pool Configured for Alwaysdata');
 
 /* =========================
-   MQTT CONFIG
+   PART 1: HTTP RECEIVE FROM ESP32 (เพิ่มใหม่) 📡
+   (เพื่อให้ ESP32 ส่งข้อมูลเข้ามาได้)
+========================= */
+app.post('/api/data', (req, res) => {
+  console.log('📡 Data from ESP32 (HTTP):', req.body);
+
+  let lat = Number(req.body.lat);
+  let lng = Number(req.body.lng);
+  const rssi = req.body.rssi || '0';
+  const state = req.body.state || 'NORMAL';
+
+  if (!TEST_MODE && (!lat || !lng || lat === 0 || lng === 0)) {
+    console.log('⚠ GPS Invalid, Skipping insert.');
+    return res.status(400).send('GPS Invalid');
+  }
+
+  const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
+  db.query(sql, [lat, lng, rssi, state], (err) => {
+    if (err) {
+      console.error('❌ Insert Error:', err);
+      res.status(500).send('Database Error');
+    } else {
+      console.log('✅ Inserted to DB via HTTP');
+      res.status(200).send('OK');
+    }
+  });
+});
+
+/* =========================
+   MQTT CONFIG (ของเดิม)
 ========================= */
 const MQTT_BROKER = 'mqtt://broker.hivemq.com:1883';
-const TOPIC_DATA = 'smartbag/data';
-const TOPIC_CMD  = 'smartbag/cmd';
-
 const mqttClient = mqtt.connect(MQTT_BROKER);
 
 mqttClient.on('connect', () => {
   console.log('✅ MQTT Connected');
-  mqttClient.subscribe(TOPIC_DATA);
+  mqttClient.subscribe('smartbag/data');
 });
 
-/* =========================
-   MQTT RECEIVE FROM ESP32
-========================= */
+// รับ MQTT (เก็บไว้เป็น Backup)
 mqttClient.on('message', (topic, message) => {
-  if (topic !== TOPIC_DATA) return;
-
-  try {
-    const data = JSON.parse(message.toString());
-    console.log('📡 Data from ESP32:', data);
-
-    let lat = Number(data.lat);
-    let lng = Number(data.lng);
-    const rssi = Number(data.rssi);
-    const state = data.state || 'UNKNOWN';
-
-    /* ===== TEST MODE ===== */
-    if (TEST_MODE && (!lat || !lng)) {
-      lat = 7.888888;
-      lng = 98.333333;
-      console.log('🧪 TEST MODE: using mock GPS');
-    }
-
-    /* ===== REAL MODE ===== */
-    if (!TEST_MODE && (!lat || !lng)) {
-      console.log('⚠ GPS not fixed, skip insert');
-      return;
-    }
-
-    const sql = `
-      INSERT INTO tracking (lat, lng, rssi, state)
-      VALUES (?, ?, ?, ?)
-    `;
-
-    db.query(sql, [lat, lng, rssi, state], err => {
-      if (err) {
-        console.error('❌ Insert Error:', err);
-      } else {
-        console.log('✅ Inserted to DB');
-      }
-    });
-
-  } catch (err) {
-    console.error('❌ MQTT JSON Parse Error:', err);
+  if (topic === 'smartbag/data') {
+    console.log('📡 MQTT Backup Data:', message.toString());
   }
 });
 
 /* =========================
-   API FOR WEB DASHBOARD
+   API FOR WEB DASHBOARD (ของเดิม)
 ========================= */
-
-// 🔹 ประวัติย้อนหลัง (เวลาเป็นเวลาปัจจุบันจริง)
 app.get('/api/history', (req, res) => {
-  const sql = `
-    SELECT
-      id,
-      lat,
-      lng,
-      rssi,
-      state,
-      created_at
-    FROM tracking
-    ORDER BY id DESC
-    LIMIT 100
-  `;
-
+  const sql = `SELECT * FROM tracking ORDER BY id DESC LIMIT 100`;
   db.query(sql, (err, results) => {
     if (err) return res.status(500).json(err);
     res.json(results);
   });
 });
 
-// 🔹 สั่งหยุดเสียง
 app.post('/api/stop', (req, res) => {
-  mqttClient.publish(TOPIC_CMD, 'STOP');
-  console.log('🔇 CMD: STOP');
+  mqttClient.publish('smartbag/cmd', 'STOP');
   res.json({ status: 'STOP SENT' });
 });
 
-// 🔹 สั่งเปิดเสียง
 app.post('/api/start', (req, res) => {
-  mqttClient.publish(TOPIC_CMD, 'START');
-  console.log('🔊 CMD: START');
+  mqttClient.publish('smartbag/cmd', 'START');
   res.json({ status: 'START SENT' });
+});
+
+/* =========================
+   PART 4: เปิดหน้าเว็บ (ไม้ตายแก้ Cannot GET /) 🌐
+   (เพิ่มส่วนนี้เพื่อให้เปิดเว็บได้ชัวร์ๆ)
+========================= */
+app.use((req, res) => {
+  if (!req.path.startsWith('/api')) {
+      // ส่งไฟล์ index.html ให้คนที่เข้าเว็บทุกกรณี
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  } else {
+      res.status(404).send('API Not Found');
+  }
 });
 
 /* =========================
    START SERVER
 ========================= */
-app.listen(8080, () => {
-  console.log('🚀 Server running on http://localhost:8080');
+const PORT = process.env.PORT || 8100; 
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on Port ${PORT}`);
 });
