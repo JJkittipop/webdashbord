@@ -6,7 +6,7 @@ import path from 'path';                // 👈 (เพิ่ม) เพื่�
 import { fileURLToPath } from 'url';    // 👈 (เพิ่ม) เพื่อใช้ใน Node.js รุ่นใหม่
 
 /* =========================
-   SETUP (ส่วนที่เพิ่มใหม่)
+   SETUP
 ========================= */
 // สร้างตัวแปร __dirname ให้ใช้งานได้
 const __filename = fileURLToPath(import.meta.url);
@@ -18,7 +18,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ✅ 1. ตั้งค่าให้ Server รู้จักโฟลเดอร์หน้าเว็บ (dist)
-// (บรรทัดนี้สำคัญมาก! ถ้าไม่มีบรรทัดนี้ เว็บจะเปิดไม่ติด)
 app.use(express.static(path.join(__dirname, 'dist')));
 
 /* =========================
@@ -41,22 +40,25 @@ const db = mysql.createPool({
 console.log('✅ MySQL Pool Configured for Alwaysdata');
 
 /* =========================
-   PART 1: HTTP RECEIVE FROM ESP32 (เพิ่มใหม่) 📡
-   (เพื่อให้ ESP32 ส่งข้อมูลเข้ามาได้)
+   PART 1: HTTP RECEIVE FROM ESP32 (แก้ไขแล้ว) 📡
+   👉 เปลี่ยนเป็น GET และรับค่าจาก req.query เพื่อให้ตรงกับ ESP32
 ========================= */
-app.post('/api/data', (req, res) => {
-  console.log('📡 Data from ESP32 (HTTP):', req.body);
+app.get('/api/data', (req, res) => {
+  console.log('📡 Data from ESP32 (HTTP GET):', req.query);
 
-  let lat = Number(req.body.lat);
-  let lng = Number(req.body.lng);
-  const rssi = req.body.rssi || '0';
-  const state = req.body.state || 'NORMAL';
+  // รับค่าจาก URL Query String (เช่น ?lat=13.5&lng=100.5...)
+  let lat = Number(req.query.lat);
+  let lng = Number(req.query.lng);
+  const rssi = req.query.rssi || '0';
+  const state = req.query.state || 'NORMAL';
 
+  // ตรวจสอบข้อมูล GPS (ถ้าไม่ใช่โหมดทดสอบ)
   if (!TEST_MODE && (!lat || !lng || lat === 0 || lng === 0)) {
     console.log('⚠ GPS Invalid, Skipping insert.');
     return res.status(400).send('GPS Invalid');
   }
 
+  // บันทึกลงฐานข้อมูล
   const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
   db.query(sql, [lat, lng, rssi, state], (err) => {
     if (err) {
@@ -110,7 +112,6 @@ app.post('/api/start', (req, res) => {
 
 /* =========================
    PART 4: เปิดหน้าเว็บ (ไม้ตายแก้ Cannot GET /) 🌐
-   (เพิ่มส่วนนี้เพื่อให้เปิดเว็บได้ชัวร์ๆ)
 ========================= */
 app.use((req, res) => {
   if (!req.path.startsWith('/api')) {

@@ -8,7 +8,9 @@ function HistoryPage() {
   ========================= */
   const fetchHistory = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/history');
+      // ✅ แก้ไข 1: เปลี่ยนจาก http://localhost:8080... เป็น /api/history 
+      // (เพื่อให้ใช้ได้ทั้งบนคอมและบน Server จริง)
+      const res = await fetch('/api/history');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -118,6 +120,7 @@ function HistoryPage() {
                 </td>
 
                 <td>
+                  {/* ✅ แก้ไข 2: ลิงก์ Google Maps ให้ถูกต้อง */}
                   <a
                     href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
                     target="_blank"
