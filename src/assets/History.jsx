@@ -8,8 +8,7 @@ function HistoryPage() {
   ========================= */
   const fetchHistory = async () => {
     try {
-      // ✅ แก้ไข 1: เปลี่ยนจาก http://localhost:8080... เป็น /api/history 
-      // (เพื่อให้ใช้ได้ทั้งบนคอมและบน Server จริง)
+      // ✅ ใช้ /api/history เพื่อให้รองรับทั้ง localhost และ Server จริง
       const res = await fetch('/api/history');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
@@ -20,7 +19,7 @@ function HistoryPage() {
 
   useEffect(() => {
     fetchHistory();
-    const timer = setInterval(fetchHistory, 2000);
+    const timer = setInterval(fetchHistory, 5000); // ปรับเป็น 5 วิ เพื่อไม่ให้หนัก Server เกินไป
     return () => clearInterval(timer);
   }, []);
 
@@ -31,7 +30,7 @@ function HistoryPage() {
     if (!value) return '--';
     return new Date(value).toLocaleDateString('th-TH', {
       year: 'numeric',
-      month: 'long',
+      month: 'short', // ย่อเดือนให้สั้นลงเพื่อประหยัดพื้นที่
       day: 'numeric'
     });
   };
@@ -55,20 +54,25 @@ function HistoryPage() {
     if (!value) return '';
     const diff = Math.floor((Date.now() - new Date(value)) / 1000);
     if (diff < 5) return 'เมื่อกี้';
-    if (diff < 60) return `${diff} วินาทีที่แล้ว`;
+    if (diff < 60) return `${diff} วิที่แล้ว`;
     if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`;
     return `${Math.floor(diff / 3600)} ชม.ที่แล้ว`;
   };
 
   return (
     <div className="page-content">
-      <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
-      <p style={{ color: '#6b7280' }}>
-        Live จาก MQTT → Node.js → MySQL
-      </p>
+      <div className="header">
+        <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
+        <p style={{ color: '#6b7280', fontSize: '14px' }}>
+          ข้อมูลย้อนหลัง (ปัดซ้าย-ขวาเพื่อดูข้อมูล)
+        </p>
+      </div>
 
-      <div className="card" style={{ padding: 0 }}>
-        <table className="history-table">
+      {/* ✅ ส่วนสำคัญ: overflowX: 'auto' ทำให้ตารางเลื่อนแนวนอนได้ในมือถือ */}
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+        
+        {/* minWidth: 600px เพื่อกันไม่ให้ตารางบีบตัวจนพัง */}
+        <table className="history-table" style={{ width: '100%', minWidth: '600px', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
               <th>วัน / เวลา</th>
@@ -90,24 +94,16 @@ function HistoryPage() {
               >
                 {/* ===== DATE & TIME COLUMN ===== */}
                 <td>
-                  {/* วันที่ */}
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    {formatDate(log.created_at)}
-                  </div>
-
-                  {/* เวลา */}
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>
                     {formatTime(log.created_at)}
                   </div>
-
-                  {/* เมื่อกี้ */}
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                    {timeAgo(log.created_at)}
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    {formatDate(log.created_at)} ({timeAgo(log.created_at)})
                   </div>
                 </td>
 
-                <td>{Number(log.lat).toFixed(6)}</td>
-                <td>{Number(log.lng).toFixed(6)}</td>
+                <td>{Number(log.lat).toFixed(5)}</td>
+                <td>{Number(log.lng).toFixed(5)}</td>
                 <td>{log.rssi}</td>
 
                 <td
@@ -120,14 +116,22 @@ function HistoryPage() {
                 </td>
 
                 <td>
-                  {/* ✅ แก้ไข 2: ลิงก์ Google Maps ให้ถูกต้อง */}
+                  {/* ✅ แก้ไขลิงก์ Google Maps ให้ถูกต้องและกดง่ายขึ้น */}
                   <a
                     href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: '#2563eb', fontWeight: 600 }}
+                    style={{ 
+                      display: 'inline-block',
+                      color: '#2563eb', 
+                      fontWeight: 600,
+                      background: '#eff6ff',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      textDecoration: 'none'
+                    }}
                   >
-                    🗺 เปิด
+                    🗺 เปิด Map
                   </a>
                 </td>
               </tr>
@@ -135,8 +139,8 @@ function HistoryPage() {
 
             {logs.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: 30 }}>
-                  ยังไม่มีข้อมูล
+                <td colSpan="6" style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>
+                  ยังไม่มีข้อมูลประวัติ...
                 </td>
               </tr>
             )}

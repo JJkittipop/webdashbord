@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { ref, onValue } from "firebase/database";
-import { db } from "./main";
+// ❌ ลบ Firebase ออก เพราะเราย้ายมาใช้ Server ตัวเองแล้ว
+// import { ref, onValue } from "firebase/database";
+// import { db } from "./main";
 import "./App.css";
 
 export default function DashboardPage() {
   const [systemData, setSystemData] = useState({
-    battery: 85,
-    connection_type: "ONLINE (Firebase)",
+    battery: 85, // ค่าเริ่มต้น (เพราะยังไม่มีข้อมูลแบตส่งมา)
+    connection_type: "Connecting...",
     isSafe: true,
     last_update: "-",
     speed: 0,
@@ -19,33 +20,49 @@ export default function DashboardPage() {
   const [findMeStatus, setFindMeStatus] = useState(false);
   const [loadingFindMe, setLoadingFindMe] = useState(false);
 
-  useEffect(() => {
-    // ===== STATUS FROM FIREBASE =====
-    const statusRef = ref(db, "SmartBag/Status");
-    const unsubStatus = onValue(statusRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
+  /* =========================
+     ✅ ส่วนใหม่: ดึงข้อมูลจาก Server ของเรา (แทน Firebase)
+  ========================= */
+  const fetchLastStatus = async () => {
+    try {
+      // เรียก API ดึงประวัติล่าสุด
+      const res = await fetch("/api/history");
+      const data = await res.json();
 
-      setSystemData({
-        battery: data.battery ?? 85,
-        connection_type: "ONLINE (Firebase)",
-        isSafe: data.isSafe,
-        last_update: data.timestamp
-          ? new Date(data.timestamp).toLocaleTimeString("th-TH")
-          : "-",
-        speed: data.speed ?? 0,
-      });
+      // ถ้ามีข้อมูลส่งกลับมา
+      if (Array.isArray(data) && data.length > 0) {
+        const latest = data[0]; // เอาตัวล่าสุด (ตัวแรกในอาเรย์)
 
-      if (data.lat && data.lng) {
-        setPosition([data.lat, data.lng]);
-        setHasGPS(true);
-      } else {
-        setHasGPS(false);
+        setSystemData({
+          battery: 85, // (จำลองไว้ก่อน จนกว่า ESP32 จะส่งค่าแบตมาจริง)
+          connection_type: "ONLINE (4G MQTT)", // ✅ เปลี่ยนชื่อสถานะตรงนี้
+          isSafe: latest.state === "SAFE",
+          last_update: latest.created_at 
+            ? new Date(latest.created_at).toLocaleTimeString("th-TH") 
+            : "-",
+          speed: 0, // (รออัปเดตในอนาคต)
+        });
+
+        // อัปเดตพิกัดลงแผนที่
+        if (latest.lat && latest.lng) {
+          setPosition([latest.lat, latest.lng]);
+          setHasGPS(true);
+        }
       }
-    });
+    } catch (err) {
+      console.error("Error fetching status:", err);
+      // กรณีติดต่อ Server ไม่ได้ ให้ขึ้นสถานะ Offline
+      setSystemData(prev => ({ ...prev, connection_type: "OFFLINE" }));
+    }
+  };
 
-    return () => unsubStatus();
+  // ✅ ใช้ setInterval เรียกข้อมูลทุกๆ 3 วินาที
+  useEffect(() => {
+    fetchLastStatus(); // เรียกครั้งแรกทันที
+    const interval = setInterval(fetchLastStatus, 3000); // วนลูปทุก 3 วิ
+    return () => clearInterval(interval); // เคลียร์เมื่อปิดหน้าเว็บ
   }, []);
+
 
   /* =========================
      FIND ME ผ่าน MQTT SERVER
@@ -53,10 +70,13 @@ export default function DashboardPage() {
   const startFindMe = async () => {
     try {
       setLoadingFindMe(true);
-      await fetch("http://localhost:8080/api/start", { method: "POST" });
+      // ✅ ตัด localhost ทิ้ง เหลือแค่ /api/start
+      await fetch("/api/start", { method: "POST" });
       setFindMeStatus(true);
+      alert("สั่งให้ส่งเสียงสำเร็จ");
     } catch (err) {
       alert("สั่งให้ส่งเสียงไม่สำเร็จ");
+      console.error(err);
     } finally {
       setLoadingFindMe(false);
     }
@@ -65,10 +85,13 @@ export default function DashboardPage() {
   const stopFindMe = async () => {
     try {
       setLoadingFindMe(true);
-      await fetch("http://localhost:8080/api/stop", { method: "POST" });
+      // ✅ ตัด localhost ทิ้ง เหลือแค่ /api/stop
+      await fetch("/api/stop", { method: "POST" });
       setFindMeStatus(false);
+      alert("หยุดเสียงสำเร็จ");
     } catch (err) {
       alert("สั่งหยุดเสียงไม่สำเร็จ");
+      console.error(err);
     } finally {
       setLoadingFindMe(false);
     }
@@ -94,10 +117,10 @@ export default function DashboardPage() {
                 : "1px solid #ef4444",
             }}
           >
-            {hasGPS ? "ออนไลน์ (ปกติ)" : "รอสัญญาณ GPS"}
+            {hasGPS ? "ONLINE (4G)" : "รอสัญญาณ GPS"}
           </div>
           <span className="status-detail">
-            {hasGPS ? "Data Received" : "Waiting for fix..."}
+            {hasGPS ? "Data Received" : "Connecting..."}
           </span>
         </div>
       </div>
@@ -110,7 +133,7 @@ export default function DashboardPage() {
           <div className="main-stats-row">
             <div>
               <div className="big">{systemData.battery}%</div>
-              <div className="sub-detail-row">แบตเตอรี่คงเหลือ</div>
+              <div className="sub-detail-row">แบตเตอรี่ (จำลอง)</div>
             </div>
 
             <div
@@ -127,15 +150,15 @@ export default function DashboardPage() {
 
           <div className="sub-stats-row">
             <div className="sub-stat-item">
-              <span className="sub-label">ความเร็ว GPS</span>
+              <span className="sub-label">อัปเดตล่าสุด</span>
               <span className="sub-value">
-                {systemData.speed.toFixed(1)} km/h
+                {systemData.last_update}
               </span>
             </div>
 
             <div className="sub-stat-item">
               <span className="sub-label">การเชื่อมต่อ</span>
-              <span className="sub-value">
+              <span className="sub-value" style={{ fontWeight: 'bold', color: '#0284c7' }}>
                 {systemData.connection_type}
               </span>
             </div>
@@ -190,6 +213,7 @@ export default function DashboardPage() {
           className="card map-card"
           style={{ padding: 0, overflow: "hidden" }}
         >
+          {/* ✅ แก้ไข 3: ใช้ลิงก์ Maps Embed แบบมาตรฐาน เพื่อให้ชัวร์ว่าขึ้นทุกเครื่อง */}
           <iframe
             title="Realtime Map"
             width="100%"
