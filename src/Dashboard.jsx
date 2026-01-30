@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from "react";
 // ❌ ลบ Firebase ออก เพราะเราย้ายมาใช้ Server ตัวเองแล้ว
-// import { ref, onValue } from "firebase/database";
-// import { db } from "./main";
 import "./App.css";
 
 export default function DashboardPage() {
   const [systemData, setSystemData] = useState({
-    battery: 85, // ค่าเริ่มต้น (เพราะยังไม่มีข้อมูลแบตส่งมา)
+    battery: 85, // ค่าเริ่มต้น (จำลอง)
     connection_type: "Connecting...",
     isSafe: true,
     last_update: "-",
@@ -21,29 +19,27 @@ export default function DashboardPage() {
   const [loadingFindMe, setLoadingFindMe] = useState(false);
 
   /* =========================
-     ✅ ส่วนใหม่: ดึงข้อมูลจาก Server ของเรา (แทน Firebase)
+      ✅ ส่วนดึงข้อมูลจาก Server (HTTP GET)
   ========================= */
   const fetchLastStatus = async () => {
     try {
-      // เรียก API ดึงประวัติล่าสุด
-      const res = await fetch("/api/history");
+      // เรียก API จาก Server Port 8100 ที่เราตั้งไว้
+      const res = await fetch("http://localhost:8100/api/history");
       const data = await res.json();
 
-      // ถ้ามีข้อมูลส่งกลับมา
       if (Array.isArray(data) && data.length > 0) {
-        const latest = data[0]; // เอาตัวล่าสุด (ตัวแรกในอาเรย์)
+        const latest = data[0]; 
 
         setSystemData({
-          battery: 85, // (จำลองไว้ก่อน จนกว่า ESP32 จะส่งค่าแบตมาจริง)
-          connection_type: "ONLINE (4G MQTT)", // ✅ เปลี่ยนชื่อสถานะตรงนี้
+          battery: 85, 
+          connection_type: "ONLINE (4G MQTT)", 
           isSafe: latest.state === "SAFE",
           last_update: latest.created_at 
             ? new Date(latest.created_at).toLocaleTimeString("th-TH") 
             : "-",
-          speed: 0, // (รออัปเดตในอนาคต)
+          speed: 0, 
         });
 
-        // อัปเดตพิกัดลงแผนที่
         if (latest.lat && latest.lng) {
           setPosition([latest.lat, latest.lng]);
           setHasGPS(true);
@@ -51,31 +47,28 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Error fetching status:", err);
-      // กรณีติดต่อ Server ไม่ได้ ให้ขึ้นสถานะ Offline
       setSystemData(prev => ({ ...prev, connection_type: "OFFLINE" }));
     }
   };
 
-  // ✅ ใช้ setInterval เรียกข้อมูลทุกๆ 3 วินาที
   useEffect(() => {
-    fetchLastStatus(); // เรียกครั้งแรกทันที
-    const interval = setInterval(fetchLastStatus, 3000); // วนลูปทุก 3 วิ
-    return () => clearInterval(interval); // เคลียร์เมื่อปิดหน้าเว็บ
+    fetchLastStatus(); 
+    const interval = setInterval(fetchLastStatus, 3000); 
+    return () => clearInterval(interval); 
   }, []);
 
-
   /* =========================
-     FIND ME ผ่าน MQTT SERVER
+      🔊 FIND ME ผ่าน MQTT SERVER (ปรับปรุงใหม่)
   ========================= */
   const startFindMe = async () => {
     try {
       setLoadingFindMe(true);
-      // ✅ ตัด localhost ทิ้ง เหลือแค่ /api/start
-      await fetch("/api/start", { method: "POST" });
+      // ✅ ระบุ URL เต็มพร้อม Port ของ Server เพื่อให้คำสั่งส่งไปถึง
+      await fetch("http://localhost:8100/api/start", { method: "POST" });
       setFindMeStatus(true);
-      alert("สั่งให้ส่งเสียงสำเร็จ");
+      alert("สั่งให้ส่งเสียงสำเร็จ ✅");
     } catch (err) {
-      alert("สั่งให้ส่งเสียงไม่สำเร็จ");
+      alert("สั่งให้ส่งเสียงไม่สำเร็จ ❌");
       console.error(err);
     } finally {
       setLoadingFindMe(false);
@@ -85,12 +78,12 @@ export default function DashboardPage() {
   const stopFindMe = async () => {
     try {
       setLoadingFindMe(true);
-      // ✅ ตัด localhost ทิ้ง เหลือแค่ /api/stop
-      await fetch("/api/stop", { method: "POST" });
+      // ✅ ระบุ URL เต็มพร้อม Port ของ Server
+      await fetch("http://localhost:8100/api/stop", { method: "POST" });
       setFindMeStatus(false);
-      alert("หยุดเสียงสำเร็จ");
+      alert("หยุดเสียงสำเร็จ ✅");
     } catch (err) {
-      alert("สั่งหยุดเสียงไม่สำเร็จ");
+      alert("สั่งหยุดเสียงไม่สำเร็จ ❌");
       console.error(err);
     } finally {
       setLoadingFindMe(false);
@@ -112,9 +105,7 @@ export default function DashboardPage() {
             style={{
               backgroundColor: hasGPS ? "#d1fae5" : "#fee2e2",
               color: hasGPS ? "#065f46" : "#991b1b",
-              border: hasGPS
-                ? "1px solid #10b981"
-                : "1px solid #ef4444",
+              border: hasGPS ? "1px solid #10b981" : "1px solid #ef4444",
             }}
           >
             {hasGPS ? "ONLINE (4G)" : "รอสัญญาณ GPS"}
@@ -139,9 +130,7 @@ export default function DashboardPage() {
             <div
               className="safety-status-value"
               style={{
-                color: systemData.isSafe
-                  ? "var(--success)"
-                  : "var(--danger)",
+                color: systemData.isSafe ? "var(--success)" : "var(--danger)",
               }}
             >
               {systemData.isSafe ? "ปลอดภัย ✓" : "แจ้งเตือน ⚠️"}
@@ -151,11 +140,8 @@ export default function DashboardPage() {
           <div className="sub-stats-row">
             <div className="sub-stat-item">
               <span className="sub-label">อัปเดตล่าสุด</span>
-              <span className="sub-value">
-                {systemData.last_update}
-              </span>
+              <span className="sub-value">{systemData.last_update}</span>
             </div>
-
             <div className="sub-stat-item">
               <span className="sub-label">การเชื่อมต่อ</span>
               <span className="sub-value" style={{ fontWeight: 'bold', color: '#0284c7' }}>
@@ -168,52 +154,18 @@ export default function DashboardPage() {
         {/* 🔊 FIND ME CARD */}
         <div className="card">
           <div className="card-title">🔊 Find Me (ค้นหากระเป๋า)</div>
-
-          {findMeStatus ? (
-            <button
-              className="btn"
-              style={{ backgroundColor: "#ef4444" }}
-              disabled={loadingFindMe}
-              onClick={stopFindMe}
-            >
-              {loadingFindMe ? "กำลังหยุดเสียง..." : "หยุดส่งเสียง"}
-            </button>
-          ) : (
-            <button
-              className="btn"
-              disabled={loadingFindMe}
-              onClick={startFindMe}
-            >
-              {loadingFindMe ? "กำลังส่งคำสั่ง..." : "สั่งให้ส่งเสียง"}
-            </button>
-          )}
+          <button
+            className="btn"
+            style={{ backgroundColor: findMeStatus ? "#ef4444" : "var(--primary)" }}
+            disabled={loadingFindMe}
+            onClick={findMeStatus ? stopFindMe : startFindMe}
+          >
+            {loadingFindMe ? "กำลังส่งคำสั่ง..." : findMeStatus ? "หยุดส่งเสียง" : "สั่งให้ส่งเสียง"}
+          </button>
         </div>
 
-        {/* HISTORY (ย่อ) */}
-        <div className="card history-card">
-          <div className="history-header">
-            <h3>📜 ประวัติการทำงานล่าสุด</h3>
-          </div>
-
-          <div className="history-list">
-            <div className="history-item">
-              <div>
-                <div className="history-title">อัปเดตล่าสุด</div>
-                <div className="history-time">
-                  {systemData.last_update}
-                </div>
-              </div>
-              <span className="history-status success">Active</span>
-            </div>
-          </div>
-        </div>
-
-        {/* MAP */}
-        <div
-          className="card map-card"
-          style={{ padding: 0, overflow: "hidden" }}
-        >
-          {/* ✅ แก้ไข 3: ใช้ลิงก์ Maps Embed แบบมาตรฐาน เพื่อให้ชัวร์ว่าขึ้นทุกเครื่อง */}
+        {/* MAP CARD */}
+        <div className="card map-card" style={{ padding: 0, overflow: "hidden" }}>
           <iframe
             title="Realtime Map"
             width="100%"

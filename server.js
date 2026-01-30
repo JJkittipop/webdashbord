@@ -20,9 +20,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 /* =========================
-   CONFIG
+   CONFIG LINE OA (ย้ายมาไว้ข้างบนเพื่อให้เรียกใช้ได้ทุกที่)
 ========================= */
-const TEST_MODE = false;
+const LINE_OA_TOKEN = 'l7Rcp9wnBtHvrwJorvkwk/ANQDzvDCTMVwMOOkYvxoVVxTApWMSF63xkzxJbl9HRHuqQ+cQa2ehaZ2akFnKCwatV5R0INBlMKd0c+VfQrpWL7JH0iBiGzitibP5XrFCC0ysMHFo0+N+HaxN4SyxfjgdB04t89/1O/w1cDnyilFU=';
+const MY_USER_ID = 'U05a1994ac36df31ff5abf037b9291c82';
 
 /* =========================
    MySQL CONFIG (ALWAYS DATA) ☁️
@@ -39,7 +40,7 @@ const db = mysql.createPool({
 console.log('✅ MySQL Pool Configured for Alwaysdata');
 
 /* =========================
-   PART 1: HTTP RECEIVE FROM ESP32 📡
+   PART 1: HTTP RECEIVE FROM ESP32 📡 (4G)
 ========================= */
 app.get('/api/data', (req, res) => {
   console.log('📡 Data from ESP32 (HTTP GET):', req.query);
@@ -49,25 +50,19 @@ app.get('/api/data', (req, res) => {
   const rssi = req.query.rssi || '0';
   const state = req.query.state || 'NORMAL';
 
-  if (!TEST_MODE && (!lat || !lng || lat === 0 || lng === 0)) {
+  if ((!lat || !lng || lat === 0 || lng === 0)) {
     console.log('⚠ GPS Invalid, Skipping insert.');
     return res.status(400).send('GPS Invalid');
   }
 
-  // -------------------------------------------------------------------------
-  // 👈 [ส่วนที่ปรับแก้] Logic การส่ง LINE OA ทั้งกรณี ALERT และ SAFE
-  // -------------------------------------------------------------------------
-  const LINE_OA_TOKEN = 'KLLWtoz4ZRPJ9Ku4Xxs8mPCerJzAjtQIQPpux9TiPmg4OxV4SWiWP3lQkOTn01qCCn31PA50CMbRyneFYX7NeXfqLWJxgaq7X1vw0dpXpzkf++L1nvYfV8VH5DNGnUYVzIajAnxQ2dI7xehHmmGLZwdB04t89/1O/w1cDnyilFU=';
-  const MY_USER_ID = 'U05a1994ac36df31ff5abf037b9291c82';
-
+  // --- Logic การส่ง LINE OA (HTTP) ---
   let messageText = "";
   if (state === 'ALERT') {
-    messageText = `⚠️ ALERT! กระเป๋าหลุดการเชื่อมต่อ\nพิกัดปัจจุบัน: https://www.google.com/maps?q=${lat},${lng}`;
+    messageText = `⚠️ ALERT! (4G)\nกระเป๋าหลุดการเชื่อมต่อ\nพิกัด: https://www.google.com/maps?q=${lat},${lng}`;
   } else if (state === 'SAFE') {
-    messageText = `✅ CONNECTED! เชื่อมต่อกระเป๋าสำเร็จ\nตำแหน่งปัจจุบัน: https://www.google.com/maps?q=${lat},${lng}`;
+    messageText = `✅ CONNECTED! (4G)\nเชื่อมต่อกระเป๋าสำเร็จ\nพิกัด: https://www.google.com/maps?q=${lat},${lng}`;
   }
 
-  // ส่ง LINE เฉพาะเมื่อเป็นสถานะ ALERT หรือ SAFE เท่านั้น
   if (messageText !== "") {
     axios.post('https://api.line.me/v2/bot/message/push', {
       to: MY_USER_ID,
@@ -77,10 +72,10 @@ app.get('/api/data', (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${LINE_OA_TOKEN}`
       }
-    }).then(() => console.log(`>> LINE OA SENT: ${state}`))
+    }).then(() => console.log(`>> LINE OA SENT (HTTP): ${state}`))
       .catch(err => console.error('>> LINE Error:', err.message));
   }
-  // -------------------------------------------------------------------------
+  // ------------------------------------
 
   const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
   db.query(sql, [lat, lng, rssi, state], (err) => {
@@ -95,24 +90,60 @@ app.get('/api/data', (req, res) => {
 });
 
 /* =========================
-   MQTT CONFIG (ของเดิม - คงเดิม)
+   MQTT CONFIG (HiveMQ) ☁️
 ========================= */
-const MQTT_BROKER = 'mqtt://broker.hivemq.com:1883';
+const MQTT_BROKER = 'mqtt://broker.hivemq.com'; 
+
 const mqttClient = mqtt.connect(MQTT_BROKER);
 
 mqttClient.on('connect', () => {
-  console.log('✅ MQTT Connected');
+  console.log('✅ MQTT Connected to HiveMQ');
   mqttClient.subscribe('smartbag/data');
 });
 
 mqttClient.on('message', (topic, message) => {
   if (topic === 'smartbag/data') {
-    console.log('📡 MQTT Backup Data:', message.toString());
+    const msgString = message.toString();
+    console.log('📡 MQTT Data Received:', msgString);
+
+    try {
+      const data = JSON.parse(msgString);
+      const state = data.state || 'NORMAL'; 
+
+      // 🔥 [ปรับปรุงใหม่] Logic ส่ง LINE เมื่อข้อมูลมาจาก MQTT 🔥
+      let messageText = "";
+      if (state === 'ALERT') {
+          messageText = `⚠️ ALERT! (WiFi/MQTT)\nกระเป๋าหลุดการเชื่อมต่อ\nพิกัด: https://www.google.com/maps?q=${data.lat},${data.lng}`;
+      }
+
+      if (messageText !== "") {
+        axios.post('https://api.line.me/v2/bot/message/push', {
+          to: MY_USER_ID,
+          messages: [{ type: 'text', text: messageText }]
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${LINE_OA_TOKEN}`
+          }
+        }).then(() => console.log(`>> LINE OA SENT (MQTT): ${state}`))
+          .catch(err => console.error('>> LINE MQTT Error:', err.message));
+      }
+
+      // บันทึกลงฐานข้อมูล
+      const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
+      db.query(sql, [data.lat, data.lng, data.rssi || 0, state], (err) => {
+        if (err) console.error('❌ MQTT DB Insert Error:', err);
+        else console.log('💾 Data Saved from MQTT');
+      });
+
+    } catch (e) {
+      console.error('❌ Error parsing MQTT JSON:', e);
+    }
   }
 });
 
 /* =========================
-   API FOR WEB DASHBOARD (ของเดิม - คงเดิม)
+   API FOR WEB DASHBOARD
 ========================= */
 app.get('/api/history', (req, res) => {
   const sql = `SELECT * FROM tracking ORDER BY id DESC LIMIT 100`;
@@ -133,7 +164,7 @@ app.post('/api/start', (req, res) => {
 });
 
 /* =========================
-   PART 4: เปิดหน้าเว็บ (คงเดิม)
+   PART 4: เปิดหน้าเว็บ
 ========================= */
 app.use((req, res) => {
   if (!req.path.startsWith('/api')) {
