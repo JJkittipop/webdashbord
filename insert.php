@@ -1,20 +1,24 @@
 <?php
-header("Access-Control-Allow-Origin: *"); // อนุญาตให้ใครก็ได้ส่งข้อมูลมา (แก้ปัญหา CORS)
+// 1. เพิ่มบรรทัดนี้ที่บนสุด เพื่อบังคับให้ใช้เวลาประเทศไทย
+date_default_timezone_set('Asia/Bangkok'); 
 
-require 'connect.php'; // เรียกใช้ไฟล์เชื่อมต่อ
+header("Access-Control-Allow-Origin: *");
+require 'connect.php';
 
-// รับค่าที่ส่งมา (ทั้งจาก Link หรือจาก ESP32)
 $lat = $_REQUEST['lat'];
 $lng = $_REQUEST['lng'];
 $status = $_REQUEST['status'];
 
-// เช็คว่ามีข้อมูลส่งมาไหม
+// 2. สร้างตัวแปรเวลาปัจจุบันของไทย
+$current_time = date("Y-m-d H:i:s"); 
+
 if(isset($lat) && isset($lng)) {
-    // คำสั่ง SQL เอาข้อมูลหย่อนลงตาราง
-    $sql = "INSERT INTO tracking (lat, lng, status) VALUES ('$lat', '$lng', '$status')";
+    // 3. ปรับ SQL ให้ใส่เวลาที่แน่นอนลงไปด้วย (สมมติว่าคอลัมน์เวลาชื่อ created_at หรือ time)
+    // หากคุณทราบชื่อคอลัมน์เวลาใน Database ให้เพิ่มเข้าไปแทน 'timestamp_column'
+    $sql = "INSERT INTO tracking (lat, lng, status, created_at) VALUES ('$lat', '$lng', '$status', '$current_time')";
 
     if ($conn->query($sql) === TRUE) {
-        echo "Save OK"; // ตอบกลับสั้นๆ ให้ ESP32 รู้เรื่อง
+        echo "Save OK";
     } else {
         echo "Error: " . $sql . "<br>" . $conn->error;
     }

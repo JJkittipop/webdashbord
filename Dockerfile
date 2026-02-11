@@ -1,20 +1,18 @@
-# ใช้ Node.js เวอร์ชัน 18
-FROM node:18-alpine
+# ใช้ Node.js version 20
+FROM node:20-alpine
 
-# กำหนดโฟลเดอร์ทำงานใน Container
-WORKDIR /usr/src/app
+# สร้างโฟลเดอร์ทำงานใน Container
+WORKDIR /app
 
-# ก๊อปปี้ไฟล์ package.json เพื่อเตรียมลง Library
+# ก๊อปปี้ไฟล์ package.json เพื่อติดตั้ง dependencies
 COPY package*.json ./
-
-# สั่งลง Library ต่างๆ
 RUN npm install
 
-# ก๊อปปี้โค้ดทั้งหมดในโฟลเดอร์เรา เข้าไปใน Container
+# ก๊อปปี้โค้ดทั้งหมด (รวมถึงโฟลเดอร์ dist)
 COPY . .
 
-# เปิด Port 3000
+# เปิดพอร์ต 3000 ตามที่ server.js ใช้
 EXPOSE 3000
 
-# คำสั่งรัน Server เมื่อเปิด Container
-CMD [ "node", "server.js" ]
+# สั่งรัน server.js
+CMD ["node", "server.js"]

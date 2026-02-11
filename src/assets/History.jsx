@@ -26,39 +26,44 @@ function HistoryPage() {
   /* =========================
      FORMAT DATE
   ========================= */
+  /* =========================
+      FORMAT DATE (แก้ไขเพื่อไม่ให้บวกเวลาเพิ่ม)
+  ========================= */
   const formatDate = (value) => {
     if (!value) return '--';
-    return new Date(value).toLocaleDateString('th-TH', {
-      year: 'numeric',
-      month: 'short', // ย่อเดือนให้สั้นลงเพื่อประหยัดพื้นที่
-      day: 'numeric'
-    });
+    // ตัดเอาเฉพาะวันที่ "YYYY-MM-DD" จาก "2026-02-11 13:09:07"
+    const datePart = value.split(' ')[0]; 
+    const [y, m, d] = datePart.split('-');
+    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    return `${parseInt(d)} ${months[parseInt(m)-1]} ${parseInt(y) + 543}`; // แสดงเป็น พ.ศ. แบบไทย
   };
 
   /* =========================
-     FORMAT TIME
+      FORMAT TIME (แก้ไขเพื่อโชว์ตาม DB ตรงๆ)
   ========================= */
   const formatTime = (value) => {
     if (!value) return '--';
-    return new Date(value).toLocaleTimeString('th-TH', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    // ตัดเอาเฉพาะเวลา "HH:mm:ss" จาก "2026-02-11 13:09:07"
+    const timePart = value.split(' ')[1]; 
+    return timePart || '--';
   };
 
   /* =========================
-     RELATIVE TIME
+      RELATIVE TIME (ปรับจูนการคำนวณ)
   ========================= */
   const timeAgo = (value) => {
     if (!value) return '';
-    const diff = Math.floor((Date.now() - new Date(value)) / 1000);
+    // ทำให้ Browser เข้าใจว่าเวลาจาก DB เป็นเวลาท้องถิ่น ไม่ใช่ UTC
+    const localDate = new Date(value.replace(' ', 'T')); 
+    const diff = Math.floor((Date.now() - localDate) / 1000);
+    
     if (diff < 5) return 'เมื่อกี้';
     if (diff < 60) return `${diff} วิที่แล้ว`;
     if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`;
-    return `${Math.floor(diff / 3600)} ชม.ที่แล้ว`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} ชม.ที่แล้ว`;
+    return '';
   };
-
+  
   return (
     <div className="page-content">
       <div className="header">
@@ -95,10 +100,12 @@ function HistoryPage() {
                 {/* ===== DATE & TIME COLUMN ===== */}
                 <td>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>
-                    {formatTime(log.created_at)}
+                    {/* 🔥 แก้ไขจาก log.created_at เป็น log.timestamp */}
+                    {formatTime(log.timestamp)} 
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    {formatDate(log.created_at)} ({timeAgo(log.created_at)})
+                    {/* 🔥 แก้ไขทั้ง 2 จุดด้านล่างนี้ด้วยครับ */}
+                    {formatDate(log.timestamp)} ({timeAgo(log.timestamp)})
                   </div>
                 </td>
 
@@ -118,21 +125,21 @@ function HistoryPage() {
                 <td>
                   {/* ✅ แก้ไขลิงก์ Google Maps ให้ถูกต้องและกดง่ายขึ้น */}
                   <a
-                    href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ 
-                      display: 'inline-block',
-                      color: '#2563eb', 
-                      fontWeight: 600,
-                      background: '#eff6ff',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      textDecoration: 'none'
-                    }}
-                  >
-                    🗺 เปิด Map
-                  </a>
+                  href={`https://www.google.com/maps/search/?api=1&query=${log.lat},${log.lng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ 
+                    display: 'inline-block',
+                    color: '#2563eb', 
+                    fontWeight: 600,
+                    background: '#eff6ff',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    textDecoration: 'none'
+                  }}
+                >
+                  🗺 เปิด Map
+                </a>
                 </td>
               </tr>
             ))}
