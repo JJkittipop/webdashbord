@@ -4,11 +4,10 @@ function HistoryPage() {
   const [logs, setLogs] = useState([]);
 
   /* =========================
-     FETCH HISTORY (REALTIME)
+      FETCH HISTORY (REALTIME)
   ========================= */
   const fetchHistory = async () => {
     try {
-      // ✅ ใช้ /api/history เพื่อให้รองรับทั้ง localhost และ Server จริง
       const res = await fetch('/api/history');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
@@ -19,64 +18,104 @@ function HistoryPage() {
 
   useEffect(() => {
     fetchHistory();
-    const timer = setInterval(fetchHistory, 5000); // ปรับเป็น 5 วิ เพื่อไม่ให้หนัก Server เกินไป
+    const timer = setInterval(fetchHistory, 5000);
     return () => clearInterval(timer);
   }, []);
 
   /* =========================
-     FORMAT DATE
+      DOWNLOAD CSV (FOR RESEARCH)
   ========================= */
+  const downloadCSV = () => {
+    if (logs.length === 0) {
+      alert("ไม่มีข้อมูลสำหรับดาวน์โหลด");
+      return;
+    }
+    // หัวตารางให้ตรงกับหน้าเว็บ
+    const headers = ["ลำดับ", "วัน / เวลา", "Latitude", "Longitude", "RSSI", "สถานะ"];
+    const rows = logs.map((log, index) => [
+      index + 1,
+      `${formatDate(log.timestamp)} ${formatTime(log.timestamp)}`,
+      log.lat,
+      log.lng,
+      log.rssi,
+      log.state
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    // ใส่ \ufeff เพื่อให้ Excel เปิดภาษาไทยได้ถูกต้อง
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `smartbag_history_log_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   /* =========================
-      FORMAT DATE (แก้ไขเพื่อไม่ให้บวกเวลาเพิ่ม)
+      FORMAT DATE & TIME
   ========================= */
   const formatDate = (value) => {
     if (!value) return '--';
-    // ตัดเอาเฉพาะวันที่ "YYYY-MM-DD" จาก "2026-02-11 13:09:07"
-    const datePart = value.split(' ')[0]; 
-    const [y, m, d] = datePart.split('-');
-    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${parseInt(d)} ${months[parseInt(m)-1]} ${parseInt(y) + 543}`; // แสดงเป็น พ.ศ. แบบไทย
+    return new Date(value).toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  /* =========================
-      FORMAT TIME (แก้ไขเพื่อโชว์ตาม DB ตรงๆ)
-  ========================= */
   const formatTime = (value) => {
     if (!value) return '--';
-    // ตัดเอาเฉพาะเวลา "HH:mm:ss" จาก "2026-02-11 13:09:07"
-    const timePart = value.split(' ')[1]; 
-    return timePart || '--';
+    return new Date(value).toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   };
 
-  /* =========================
-      RELATIVE TIME (ปรับจูนการคำนวณ)
-  ========================= */
   const timeAgo = (value) => {
     if (!value) return '';
-    // ทำให้ Browser เข้าใจว่าเวลาจาก DB เป็นเวลาท้องถิ่น ไม่ใช่ UTC
-    const localDate = new Date(value.replace(' ', 'T')); 
-    const diff = Math.floor((Date.now() - localDate) / 1000);
-    
+    const diff = Math.floor((Date.now() - new Date(value)) / 1000);
     if (diff < 5) return 'เมื่อกี้';
     if (diff < 60) return `${diff} วิที่แล้ว`;
     if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} ชม.ที่แล้ว`;
-    return '';
+    return `${Math.floor(diff / 3600)} ชม.ที่แล้ว`;
   };
-  
+
   return (
     <div className="page-content">
-      <div className="header">
-        <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
-        <p style={{ color: '#6b7280', fontSize: '14px' }}>
-          ข้อมูลย้อนหลัง (ปัดซ้าย-ขวาเพื่อดูข้อมูล)
-        </p>
+      {/* ปรับ Header ให้เป็น Flex เพื่อวางปุ่มไว้ทางขวา */}
+      <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
+          <p style={{ color: '#6b7280', fontSize: '14px' }}>
+            ข้อมูลย้อนหลัง (ปัดซ้าย-ขวาเพื่อดูข้อมูล)
+          </p>
+        </div>
+        
+        {/* เพิ่มปุ่มดาวน์โหลด CSV ตรงนี้ */}
+        <button 
+          onClick={downloadCSV}
+          style={{
+            backgroundColor: '#16a34a',
+            color: 'white',
+            border: 'none',
+            padding: '10px 18px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}
+        >
+          📥 Download CSV
+        </button>
       </div>
 
-      {/* ✅ ส่วนสำคัญ: overflowX: 'auto' ทำให้ตารางเลื่อนแนวนอนได้ในมือถือ */}
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        
-        {/* minWidth: 600px เพื่อกันไม่ให้ตารางบีบตัวจนพัง */}
         <table className="history-table" style={{ width: '100%', minWidth: '600px', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
@@ -85,7 +124,8 @@ function HistoryPage() {
               <th>Lng</th>
               <th>RSSI</th>
               <th>สถานะ</th>
-              <th>แผนที่</th>
+              {/* ปรับให้คำว่า "แผนที่" ชิดขวา */}
+              <th style={{ textAlign: 'right', paddingRight: '40px' }}>แผนที่</th>
             </tr>
           </thead>
 
@@ -94,17 +134,14 @@ function HistoryPage() {
               <tr
                 key={i}
                 style={{
-                  background: i === 0 ? '#ecfeff' : 'transparent'
+                  background: i === 0 ? '#1e293b' : 'transparent'
                 }}
               >
-                {/* ===== DATE & TIME COLUMN ===== */}
                 <td>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>
-                    {/* 🔥 แก้ไขจาก log.created_at เป็น log.timestamp */}
                     {formatTime(log.timestamp)} 
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    {/* 🔥 แก้ไขทั้ง 2 จุดด้านล่างนี้ด้วยครับ */}
                     {formatDate(log.timestamp)} ({timeAgo(log.timestamp)})
                   </div>
                 </td>
@@ -116,30 +153,30 @@ function HistoryPage() {
                 <td
                   style={{
                     fontWeight: 700,
-                    color: log.state === 'WARN' ? '#dc2626' : '#16a34a'
+                    color: log.state === 'WARN' || log.state === 'ALERT' ? '#dc2626' : '#16a34a'
                   }}
                 >
                   {log.state}
                 </td>
 
-                <td>
-                  {/* ✅ แก้ไขลิงก์ Google Maps ให้ถูกต้องและกดง่ายขึ้น */}
+                {/* ปรับให้ปุ่มชิดขวา */}
+                <td style={{ textAlign: 'right', paddingRight: '40px' }}>
                   <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${log.lat},${log.lng}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ 
-                    display: 'inline-block',
-                    color: '#2563eb', 
-                    fontWeight: 600,
-                    background: '#eff6ff',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    textDecoration: 'none'
-                  }}
-                >
-                  🗺 เปิด Map
-                </a>
+                    href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ 
+                      display: 'inline-block',
+                      color: '#2563eb', 
+                      fontWeight: 600,
+                      background: '#eff6ff',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    🗺 เปิด Map
+                  </a>
                 </td>
               </tr>
             ))}

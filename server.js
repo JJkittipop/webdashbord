@@ -64,9 +64,9 @@ client.on('message', (topic, message) => {
       if (state !== lastLineState) {
           let messageText = "";
           if (state === 'ALERT') {
-              messageText = `⚠️ ALERT! (แจ้งจาก VPS)\nกระเป๋าถูกตัดขาด!\nพิกัดล่าสุด: https://www.google.com/maps?q=${data.lat},${data.lng}`;
+              messageText = `⚠️ ALERT! \nกระเป๋าถูกตัดขาด!\nพิกัดล่าสุด: https://www.google.com/maps?q=${data.lat},${data.lng}`;
           } else if (state === 'SAFE' && lastLineState === 'ALERT') {
-              messageText = `✅ SAFE (แจ้งจาก VPS)\nกระเป๋ากลับมาปลอดภัยแล้ว`;
+              messageText = `✅ SAFE \nกระเป๋ากลับมาปลอดภัยแล้ว`;
           }
 
           if (messageText !== "") {
