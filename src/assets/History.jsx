@@ -8,8 +8,7 @@ function HistoryPage() {
   ========================= */
   const fetchHistory = async () => {
     try {
-      // ⚠️ สำคัญมาก: เปลี่ยน IP ตรงนี้เป็น IP หรือ Domain ของ Hostinger VPS ของคุณ
-      // ตัวอย่าง: 'http://123.45.67.89:3000/api/history'
+      // ใช้ลิงก์ Ngrok เดิมของคุณ
       const res = await fetch('https://runny-semiacademical-garland.ngrok-free.app/api/history');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
@@ -32,11 +31,11 @@ function HistoryPage() {
       alert("ไม่มีข้อมูลสำหรับดาวน์โหลด");
       return;
     }
-    // หัวตารางให้ตรงกับหน้าเว็บ
     const headers = ["ลำดับ", "วัน / เวลา", "Latitude", "Longitude", "RSSI", "สถานะ"];
     const rows = logs.map((log, index) => [
       index + 1,
-      `${formatDate(log.timestamp)} ${formatTime(log.timestamp)}`,
+      // 💡 เปลี่ยนเป็น log.created_at
+      `${formatDate(log.created_at)} ${formatTime(log.created_at)}`,
       log.lat,
       log.lng,
       log.rssi,
@@ -44,7 +43,6 @@ function HistoryPage() {
     ]);
 
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    // ใส่ \ufeff เพื่อให้ Excel เปิดภาษาไทยได้ถูกต้อง
     const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -87,7 +85,6 @@ function HistoryPage() {
 
   return (
     <div className="page-content">
-      {/* ปรับ Header ให้เป็น Flex เพื่อวางปุ่มไว้ทางขวา */}
       <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>📜 ประวัติการเคลื่อนที่ (Log)</h1>
@@ -96,7 +93,6 @@ function HistoryPage() {
           </p>
         </div>
         
-        {/* เพิ่มปุ่มดาวน์โหลด CSV ตรงนี้ */}
         <button 
           onClick={downloadCSV}
           style={{
@@ -126,7 +122,6 @@ function HistoryPage() {
               <th>Lng</th>
               <th>RSSI</th>
               <th>สถานะ</th>
-              {/* ปรับให้คำว่า "แผนที่" ชิดขวา */}
               <th style={{ textAlign: 'right', paddingRight: '40px' }}>แผนที่</th>
             </tr>
           </thead>
@@ -141,10 +136,11 @@ function HistoryPage() {
               >
                 <td>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>
-                    {formatTime(log.timestamp)} 
+                    {/* 💡 เปลี่ยนเป็น log.created_at */}
+                    {formatTime(log.created_at)} 
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    {formatDate(log.timestamp)} ({timeAgo(log.timestamp)})
+                    {formatDate(log.created_at)} ({timeAgo(log.created_at)})
                   </div>
                 </td>
 
@@ -155,15 +151,15 @@ function HistoryPage() {
                 <td
                   style={{
                     fontWeight: 700,
-                    color: log.state === 'WARN' || log.state === 'ALERT' ? '#dc2626' : '#16a34a'
+                    color: log.state === 'WARN' || log.state === 'ALRT' || log.state === 'ALERT' ? '#dc2626' : '#16a34a'
                   }}
                 >
                   {log.state}
                 </td>
 
-                {/* ปรับให้ปุ่มชิดขวา */}
                 <td style={{ textAlign: 'right', paddingRight: '40px' }}>
                   <a
+                    // 💡 แก้ไขลิงก์ Google Maps ให้ถูกต้อง
                     href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
                     target="_blank"
                     rel="noreferrer"
