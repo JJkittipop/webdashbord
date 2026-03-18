@@ -8,8 +8,12 @@ function HistoryPage() {
   ========================= */
   const fetchHistory = async () => {
     try {
-      // ใช้ลิงก์ Ngrok เดิมของคุณ
-      const res = await fetch('https://runny-semiacademical-garland.ngrok-free.app/api/history');
+      // ✅ เพิ่ม headers เพื่อข้ามหน้า Warning ของ Ngrok อัตโนมัติ
+      const res = await fetch('https://runny-semiacademical-garland.ngrok-free.dev/api/history', {
+        headers: {
+          "ngrok-skip-browser-warning": "true"
+        }
+      });
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -34,7 +38,6 @@ function HistoryPage() {
     const headers = ["ลำดับ", "วัน / เวลา", "Latitude", "Longitude", "RSSI", "สถานะ"];
     const rows = logs.map((log, index) => [
       index + 1,
-      // 💡 เปลี่ยนเป็น log.created_at
       `${formatDate(log.created_at)} ${formatTime(log.created_at)}`,
       log.lat,
       log.lng,
@@ -58,7 +61,9 @@ function HistoryPage() {
   ========================= */
   const formatDate = (value) => {
     if (!value) return '--';
-    return new Date(value).toLocaleDateString('th-TH', {
+    // ✅ แก้ไขให้รองรับวันที่จาก MySQL
+    const date = new Date(value.replace(' ', 'T'));
+    return date.toLocaleDateString('th-TH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -67,7 +72,8 @@ function HistoryPage() {
 
   const formatTime = (value) => {
     if (!value) return '--';
-    return new Date(value).toLocaleTimeString('th-TH', {
+    const date = new Date(value.replace(' ', 'T'));
+    return date.toLocaleTimeString('th-TH', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
@@ -76,7 +82,8 @@ function HistoryPage() {
 
   const timeAgo = (value) => {
     if (!value) return '';
-    const diff = Math.floor((Date.now() - new Date(value)) / 1000);
+    const date = new Date(value.replace(' ', 'T'));
+    const diff = Math.floor((Date.now() - date) / 1000);
     if (diff < 5) return 'เมื่อกี้';
     if (diff < 60) return `${diff} วิที่แล้ว`;
     if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`;
@@ -136,7 +143,6 @@ function HistoryPage() {
               >
                 <td>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>
-                    {/* 💡 เปลี่ยนเป็น log.created_at */}
                     {formatTime(log.created_at)} 
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
@@ -159,7 +165,7 @@ function HistoryPage() {
 
                 <td style={{ textAlign: 'right', paddingRight: '40px' }}>
                   <a
-                    // 💡 แก้ไขลิงก์ Google Maps ให้ถูกต้อง
+                    // ✅ แก้ไขลิงก์ Google Maps ให้ถูกต้อง
                     href={`https://www.google.com/maps?q=${log.lat},${log.lng}`}
                     target="_blank"
                     rel="noreferrer"
