@@ -13,11 +13,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// เปิด CORS เพื่อให้หน้าเว็บจาก Vercel สามารถยิง API เข้ามาดึงข้อมูลประวัติได้
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ให้ Server นี้ทำหน้าที่เปิดหน้าเว็บที่ Build แล้วด้วย (Frontend)
+// (เก็บส่วนนี้ไว้ เผื่อคุณอยากเข้าเว็บผ่าน IP ของ VPS)
 app.use(express.static(path.join(__dirname, 'dist')));
 
 /* =========================
@@ -29,10 +30,12 @@ const MY_USER_ID = 'U3c348ad3d07006159e2e6314f18b83c8';
 let lastLineState = "NORMAL"; 
 
 /* =========================
-   MySQL CONFIG (ปรับเพื่อรันบน VPS) ☁️
+   MySQL CONFIG (MariaDB บน VPS)
 ========================= */
 const db = mysql.createPool({
-  host: 'db',    
+  // 💡 หมายเหตุ: ถ้าคุณรันไฟล์นี้ด้วย node แบบธรรมดาให้ใช้ 'localhost'
+  // แต่ถ้าคุณรันใน Docker Compose ให้เปลี่ยนกลับเป็น 'db' เหมือนเดิมนะครับ
+  host: 'localhost', 
   user: 'admin',       
   password: '1234',    
   database: 'smartbag_db', 
@@ -40,12 +43,19 @@ const db = mysql.createPool({
   connectionLimit: 10
 });
 
-// ส่วน MQTT ให้เปลี่ยนเป็น localhost เพื่อความเสถียร
-const MQTT_BROKER = 'mqtt://mqtt';
-const client = mqtt.connect(MQTT_BROKER);
+/* =========================
+   MQTT CONFIG (เปลี่ยนไปใช้ HiveMQ)
+========================= */
+const MQTT_BROKER = 'mqtt://broker.hivemq.com:1883';
+// สร้าง Client ID แบบสุ่ม เพื่อไม่ให้ไปชนกับบอร์ด ESP32 หรือหน้าเว็บ
+const clientId = "VPS_Backend_" + Math.random().toString(16).substr(2, 8); 
+
+const client = mqtt.connect(MQTT_BROKER, {
+    clientId: clientId
+});
 
 client.on('connect', () => {
-  console.log('✅ MQTT Connected locally on VPS');
+  console.log('✅ MQTT Connected to HiveMQ (Port 1883)');
   client.subscribe('smartbag/gps', (err) => {
     if (!err) console.log("📡 Subscribed to smartbag/gps");
   });
@@ -54,16 +64,18 @@ client.on('connect', () => {
 client.on('message', (topic, message) => {
   if (topic === 'smartbag/gps') {
     const msgString = message.toString();
-    console.log('📥 Data Received:', msgString);
+    // console.log('📥 Data Received:', msgString); // เอาคอมเมนต์ออกถ้าอยากดูข้อมูลที่วิ่งเข้า
 
     try {
       const data = JSON.parse(msgString);
       const state = data.state || 'SAFE'; 
-      const rssi = -65; 
+      const rssi = data.signal || -65; // ดึงค่าความแรง WiFi ที่บอร์ดส่งมา
 
+      // --- ระบบแจ้งเตือน LINE ---
       if (state !== lastLineState) {
           let messageText = "";
           if (state === 'ALERT') {
+              // แก้ไขลิงก์ Google Maps ให้ทำงานได้จริง
               messageText = `⚠️ ALERT! \nกระเป๋าถูกตัดขาด!\nพิกัดล่าสุด: https://www.google.com/maps?q=${data.lat},${data.lng}`;
           } else if (state === 'SAFE' && lastLineState === 'ALERT') {
               messageText = `✅ SAFE \nกระเป๋ากลับมาปลอดภัยแล้ว`;
@@ -75,12 +87,14 @@ client.on('message', (topic, message) => {
           }
       }
 
-      // บันทึกลงฐานข้อมูล MariaDB บน VPS
-      const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
-      db.query(sql, [data.lat, data.lng, rssi, state], (err) => {
-        if (err) console.error('❌ DB Insert Error:', err);
-        else console.log('💾 Data Saved to VPS MariaDB');
-      });
+      // --- บันทึกลงฐานข้อมูล MariaDB บน VPS ---
+      if (data.lat && data.lng) {
+          const sql = `INSERT INTO tracking (lat, lng, rssi, state) VALUES (?, ?, ?, ?)`;
+          db.query(sql, [data.lat, data.lng, rssi, state], (err) => {
+            if (err) console.error('❌ DB Insert Error:', err);
+            // else console.log('💾 Data Saved to VPS MariaDB'); 
+          });
+      }
 
     } catch (e) {
       console.error('❌ Error parsing MQTT JSON:', e);
@@ -99,7 +113,7 @@ const sendLineMessage = (text) => {
         }
     }).then(() => {
         console.log(`>> LINE SENT: ${text.split('\n')[0]}`);
-    }).catch(err => console.error('>> LINE Error:', err.message));
+    }).catch(err => console.error('>> LINE Error:', err?.response?.data || err.message));
 };
 
 /* =========================
@@ -124,7 +138,7 @@ app.post('/api/stop', (req, res) => {
 });
 
 /* =========================
-   SERVER START & FRONTEND
+   SERVER START
 ========================= */
 app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));

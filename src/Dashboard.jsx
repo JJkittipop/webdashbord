@@ -18,7 +18,7 @@ export default function DashboardPage() {
   const [volume, setVolume] = useState(50);
 
   useEffect(() => {
-    const mqttUrl = "wss://smartbag.cloud/mqtt";
+    const mqttUrl = "wss://broker.hivemq.com:8884/mqtt";
     const clientId = "WebClient_" + Math.random().toString(16).substr(2, 8);
 
     const mqttClient = mqtt.connect(mqttUrl, {
