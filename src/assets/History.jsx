@@ -10,7 +10,7 @@ function HistoryPage() {
     try {
       // ⚠️ สำคัญมาก: เปลี่ยน IP ตรงนี้เป็น IP หรือ Domain ของ Hostinger VPS ของคุณ
       // ตัวอย่าง: 'http://123.45.67.89:3000/api/history'
-      const res = await fetch('http://<เปลี่ยนตรงนี้เป็น_IP_ของ_VPS>:3000/api/history'); 
+      const res = await fetch('https://runny-semiacademical-garland.ngrok-free.app/api/history');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
